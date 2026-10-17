@@ -14,6 +14,18 @@ Worker: `oleg-consulting`. `wrangler.jsonc` contains public configuration only.
 
 The cap limits this form's provider attempts, not other uses of the Resend account. A determined attacker can exhaust the allowance; the limit bounds email volume, not every possible denial of service.
 
+The attempt gate runs before Turnstile to bound unverified traffic, so users sharing a public IP also share the five-attempt allowance. Revisit that threshold if legitimate visitors encounter lockouts; retain the independent daily sending cap.
+
+## Browser security headers
+
+All Worker responses, including API failures and the www redirect, carry HSTS (`max-age=31536000; includeSubDomains`) and disable camera, microphone and geolocation. Keep HTTPS working for this domain and any future web subdomains; HSTS persists in browsers for one year. Preload is not enabled.
+
+CSP is initially `Content-Security-Policy-Report-Only`: self-hosted assets plus Turnstile scripts/frames, no inline-script or eval allowances. Report-only does not block violations; X-Frame-Options still denies framing. Inspect browser console diagnostics and verify Turnstile on desktop/mobile before promoting to enforcement. No reporting endpoint or third-party telemetry collector is configured.
+
+## Dependency maintenance
+
+`npm audit --audit-level=high` checks production and development dependencies in CI. Weekly Dependabot updates cover npm and GitHub Actions; action revisions are SHA-pinned. Miniflare is pinned to the patched v5 beta also used by current Wrangler, using its exported v4-options converter for the isolated SQLite tests. The tests must continue verifying concurrent limits and restart persistence after updates.
+
 ## Secrets
 
 `RESEND_API_KEY` and `TURNSTILE_SECRET_KEY` are Cloudflare Worker secrets. The Turnstile site key is intentionally public. Never use a VITE variable for secrets. `.env*`, `.dev.vars*`, and `.wrangler/` are ignored; only `.env.example` with empty credential placeholders is public.
@@ -22,7 +34,7 @@ For rotation, use `npx wrangler secret put RESEND_API_KEY` or `npx wrangler secr
 
 ## Release and recovery
 
-Run `npm ci`, `npm run build`, all three test scripts, and `npm run check:secrets` before `npx wrangler deploy`. GitHub validation runs the same checks without email credentials. The Node runtime is local development only; production uses `cloudflare/worker.mjs`. The legacy static Sites adapter cannot deliver email.
+Run `npm ci`, `npm audit --audit-level=high`, `npm run build`, all three test scripts, and `npm run check:secrets` before `npx wrangler deploy`. GitHub validation and Cloudflare Builds run the same checks without email credentials. Cloudflare deploys pushes to `main`; preview builds are disabled. The Node runtime is local development only; production uses `cloudflare/worker.mjs`. The legacy static Sites adapter cannot deliver email.
 
 Verify the homepage, www redirect, public config, missing-token rejection, one browser inquiry and Resend delivery after a release. Do not exhaust the real daily allowance during verification; the concurrent cap and persistence tests use isolated local Durable Objects.
 

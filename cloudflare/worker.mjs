@@ -122,7 +122,7 @@ export class ContactLimits {
   }
 }
 
-export default {
+const app = {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.hostname === "www.olegnovoselskyy.com") {
@@ -177,17 +177,50 @@ export default {
       }
       if (url.pathname.startsWith("/api/"))
         return new Response(null, { status: 404 });
-      const response = await env.ASSETS.fetch(request);
-      const secured = new Response(response.body, response);
-      secured.headers.set("X-Content-Type-Options", "nosniff");
-      secured.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-      secured.headers.set("X-Frame-Options", "DENY");
-      return secured;
+      return await env.ASSETS.fetch(request);
     } catch {
       return json(
         503,
         "The contact form is temporarily unavailable. Please try again later.",
       );
     }
+  },
+};
+
+const reportOnlyPolicy = [
+  "default-src 'self'",
+  "script-src 'self' https://challenges.cloudflare.com",
+  "frame-src https://challenges.cloudflare.com",
+  "connect-src 'self'",
+  "img-src 'self' data:",
+  "font-src 'self'",
+  "style-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join("; ");
+
+export default {
+  async fetch(request, env) {
+    const response = await app.fetch(request, env);
+    // Clone immutable asset/redirect headers and protect API/error responses too.
+    const secured = new Response(response.body, response);
+    secured.headers.set("X-Content-Type-Options", "nosniff");
+    secured.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+    secured.headers.set("X-Frame-Options", "DENY");
+    secured.headers.set(
+      "Content-Security-Policy-Report-Only",
+      reportOnlyPolicy,
+    );
+    secured.headers.set(
+      "Strict-Transport-Security",
+      "max-age=31536000; includeSubDomains",
+    );
+    secured.headers.set(
+      "Permissions-Policy",
+      "camera=(), microphone=(), geolocation=()",
+    );
+    return secured;
   },
 };

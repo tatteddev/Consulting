@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { build } from "esbuild";
-import { Miniflare } from "miniflare";
+import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import worker, { verifyTurnstile } from "../cloudflare/worker.mjs";
 import { createContactHandler } from "../server/contact.mjs";
 
@@ -121,6 +121,69 @@ test("production config exposes only public site key and missing limits fail clo
   assert.equal(missing.status, 503);
 });
 
+test("security headers cover assets, redirects, API responses and failures without enforcing CSP", async () => {
+  const assetEnv = {
+    ...env,
+    ASSETS: {
+      fetch: () =>
+        new Response("page", {
+          headers: { "Content-Type": "text/html", ETag: '"asset-v1"' },
+        }),
+    },
+  };
+  const cases = [
+    ["https://example.test/", assetEnv, 200],
+    ["https://www.olegnovoselskyy.com/?ref=test", assetEnv, 308],
+    ["https://example.test/api/contact-config", assetEnv, 200],
+    ["https://example.test/api/unknown", assetEnv, 404],
+    ["https://example.test/api/contact", env, 503],
+    [
+      "https://example.test/",
+      {
+        ...env,
+        ASSETS: {
+          fetch: () => {
+            throw new Error("offline");
+          },
+        },
+      },
+      503,
+    ],
+  ];
+  for (const [url, bindings, status] of cases) {
+    const response = await worker.fetch(new Request(url), bindings);
+    assert.equal(response.status, status);
+    assert.equal(
+      response.headers.get("Strict-Transport-Security"),
+      "max-age=31536000; includeSubDomains",
+    );
+    assert.equal(
+      response.headers.get("Permissions-Policy"),
+      "camera=(), microphone=(), geolocation=()",
+    );
+    assert.equal(response.headers.get("X-Frame-Options"), "DENY");
+    assert.equal(response.headers.get("Content-Security-Policy"), null);
+    const csp = response.headers.get("Content-Security-Policy-Report-Only");
+    assert.ok(
+      csp.includes("script-src 'self' https://challenges.cloudflare.com"),
+    );
+    assert.ok(csp.includes("frame-src https://challenges.cloudflare.com"));
+    assert.ok(csp.includes("object-src 'none'"));
+    assert.ok(!csp.includes("unsafe-inline") && !csp.includes("unsafe-eval"));
+    if (status === 308)
+      assert.equal(
+        response.headers.get("Location"),
+        "https://olegnovoselskyy.com/?ref=test",
+      );
+    if (url.endsWith("/api/contact-config"))
+      assert.equal(response.headers.get("Cache-Control"), "no-store");
+    if (url === "https://example.test/" && status === 200) {
+      assert.equal(response.headers.get("ETag"), '"asset-v1"');
+      assert.equal(await response.text(), "page");
+    }
+  }
+});
+
 test("real SQLite Durable Object enforces concurrent limits and persists across restarts", async () => {
   const dir = await mkdtemp(join(tmpdir(), "consulting-limits-"));
   let mf;
@@ -134,7 +197,8 @@ test("real SQLite Durable Object enforces concurrent limits and persists across 
       platform: "neutral",
       external: ["node:crypto"],
     });
-    const options = {
+    const options = convertV4MiniflareOptions({
+      name: "consulting-limits-test",
       modules: true,
       modulesRoot: dir,
       scriptPath,
@@ -144,8 +208,9 @@ test("real SQLite Durable Object enforces concurrent limits and persists across 
       durableObjects: {
         CONTACT_LIMITS: { className: "ContactLimits", useSQLite: true },
       },
-      durableObjectsPersist: join(dir, "state"),
-    };
+    });
+    // V5 replaced per-resource persistence options with a shared root.
+    options.resourcePersistencePath = join(dir, "state");
     mf = new Miniflare(options);
     const ns = await mf.getDurableObjectNamespace("CONTACT_LIMITS");
     const stub = ns.get(ns.idFromName("test"));
