@@ -2,6 +2,7 @@ import { isRecord } from "../shared/json.ts";
 import type { ContactEnv } from "../server/contact.ts";
 import { createHash } from "node:crypto";
 import { createContactHandler } from "../server/contact.ts";
+import { structuredDataJson } from "../shared/seo.ts";
 
 interface Env extends ContactEnv {
   CONTACT_ORIGIN: string;
@@ -217,9 +218,12 @@ const app = {
   },
 };
 
-const reportOnlyPolicy = [
+const structuredDataHash = createHash("sha256")
+  .update(structuredDataJson)
+  .digest("base64");
+const contentSecurityPolicy = [
   "default-src 'self'",
-  "script-src 'self' https://challenges.cloudflare.com",
+  `script-src 'self' https://challenges.cloudflare.com 'sha256-${structuredDataHash}'`,
   "frame-src https://challenges.cloudflare.com",
   "connect-src 'self'",
   "img-src 'self' data:",
@@ -239,10 +243,7 @@ export default {
     secured.headers.set("X-Content-Type-Options", "nosniff");
     secured.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
     secured.headers.set("X-Frame-Options", "DENY");
-    secured.headers.set(
-      "Content-Security-Policy-Report-Only",
-      reportOnlyPolicy,
-    );
+    secured.headers.set("Content-Security-Policy", contentSecurityPolicy);
     secured.headers.set(
       "Strict-Transport-Security",
       "max-age=31536000; includeSubDomains",

@@ -33,6 +33,8 @@ Production requires Managed Turnstile with server-side hostname and action verif
 
 ## Validation and deployment
 
+The production build prerenders the React homepage, includes canonical/social metadata and factual structured data, and runs `test:seo` to verify crawlable content, discovery files and the matching enforced CSP hash. Rendering does not require a server on each page view. Search Console setup and indexing operations are documented in DEPLOYMENT.md.
+
 Run `npm run build`, `npm run test:contact`, `npm run test:sites`, `npm run test:cloudflare` and `npm run check:secrets`. Tests include the local HTTP runtime, provider stubs, Turnstile failure cases, and concurrent limits with real local SQLite Durable Objects and restart persistence. A production browser inquiry was reported delivered by Resend at17:20 UTC on2026-10-17.
 
 The optional Sites/static adapter in worker/, scripts/ and .openai/ serves the frontend only. It does **not** implement contact delivery. Deploy the Node runtime or port and verify the endpoint for the chosen hosting platform. A static-only deployment leaves the form unavailable.
