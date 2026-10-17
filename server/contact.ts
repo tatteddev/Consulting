@@ -1,3 +1,4 @@
+import { isRecord } from "../shared/json.ts";
 import { createHash } from "node:crypto";
 
 const RECIPIENT = "oleg.novoselskyy@gmail.com";
@@ -10,7 +11,40 @@ const TOPICS = new Set([
 const MAX_BODY_BYTES = 16_384;
 const EMAIL = /^[^\s@<>\r\n]+@[^\s@<>\r\n]+\.[^\s@<>\r\n]+$/;
 
-function json(status, value, headers = {}) {
+export interface ContactEnv {
+  CONTACT_ORIGIN?: string;
+  RESEND_API_KEY?: string;
+  CONTACT_FROM_EMAIL?: string;
+}
+interface ContactOptions {
+  env?: ContactEnv;
+  fetchEmail?: typeof fetch;
+  now?: () => number;
+  checkAttempt?: (ip: string) => Promise<Response | null>;
+  verifyVisitor?: (token: unknown, ip: string) => Promise<Response | null>;
+  reserveSend?: () => Promise<Response | null>;
+}
+const fields = [
+  "name",
+  "email",
+  "topic",
+  "message",
+  "website",
+  "requestId",
+] as const;
+type ContactInput = Record<(typeof fields)[number], string> & {
+  turnstileToken?: unknown;
+};
+function isContactInput(input: unknown): input is ContactInput {
+  return (
+    isRecord(input) && fields.every((field) => typeof input[field] === "string")
+  );
+}
+function json(
+  status: number,
+  value: { error: string } | { ok: true },
+  headers: Record<string, string> = {},
+) {
   return new Response(JSON.stringify(value), {
     status,
     headers: {
@@ -28,11 +62,11 @@ export function createContactHandler({
   checkAttempt,
   verifyVisitor,
   reserveSend,
-} = {}) {
+}: ContactOptions = {}) {
   // Process-local limits protect the single-server deployment. Hosting with replicas
   // must provide a shared gateway limit as documented in README.
-  const attempts = new Map();
-  function limited(ip) {
+  const attempts = new Map<string, { count: number; until: number }>();
+  function limited(ip: string) {
     const time = now();
     for (const [key, bucket] of attempts)
       if (bucket.until <= time) attempts.delete(key);
@@ -42,7 +76,10 @@ export function createContactHandler({
     attempts.set(ip, bucket);
     return bucket.count > 5;
   }
-  return async function contact(request, { ip = "unknown" } = {}) {
+  return async function contact(
+    request: Request,
+    { ip = "unknown" }: { ip?: string } = {},
+  ) {
     if (request.method !== "POST")
       return json(
         405,
@@ -66,7 +103,7 @@ export function createContactHandler({
     const reader = request.body?.getReader();
     if (!reader)
       return json(400, { error: "Please complete the inquiry form." });
-    const chunks = [];
+    const chunks: Uint8Array[] = [];
     let size = 0;
     try {
       while (true) {
@@ -84,23 +121,13 @@ export function createContactHandler({
         error: "The request was interrupted. Please try again.",
       });
     }
-    let input;
+    let input: unknown;
     try {
       input = JSON.parse(Buffer.concat(chunks).toString("utf8"));
     } catch {
       return json(400, { error: "Invalid request format." });
     }
-    if (!input || typeof input !== "object" || Array.isArray(input))
-      return json(400, { error: "Please complete the inquiry form." });
-    const fields = [
-      "name",
-      "email",
-      "topic",
-      "message",
-      "website",
-      "requestId",
-    ];
-    if (fields.some((field) => typeof input[field] !== "string"))
+    if (!isContactInput(input))
       return json(400, { error: "Please complete the inquiry form." });
     if (input.website)
       return json(400, { error: "We could not submit this inquiry." });
@@ -168,8 +195,13 @@ export function createContactHandler({
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(15_000),
       });
-      const result = await response.json().catch(() => null);
-      if (!response.ok || typeof result?.id !== "string" || !result.id)
+      const result: unknown = await response.json().catch(() => null);
+      if (
+        !response.ok ||
+        !isRecord(result) ||
+        typeof result.id !== "string" ||
+        !result.id
+      )
         return json(502, {
           error:
             "We couldn't send your inquiry. Your message is still here—please try again.",

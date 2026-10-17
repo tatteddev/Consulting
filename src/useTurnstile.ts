@@ -1,6 +1,29 @@
+import { isRecord } from "../shared/json.ts";
 import { useEffect, useRef, useState } from "react";
 
-let scriptPromise;
+interface TurnstileApi {
+  render(
+    container: HTMLElement,
+    options: {
+      sitekey: string;
+      action: string;
+      theme: "dark";
+      size: "compact" | "flexible";
+      "response-field": false;
+      callback: (token: string) => void;
+      "expired-callback": () => void;
+      "error-callback": () => void;
+    },
+  ): string;
+  reset(widget: string): void;
+  remove(widget: string): void;
+}
+declare global {
+  interface Window {
+    turnstile?: TurnstileApi;
+  }
+}
+let scriptPromise: Promise<TurnstileApi> | null = null;
 function loadScript() {
   if (window.turnstile) return Promise.resolve(window.turnstile);
   if (!scriptPromise)
@@ -18,7 +41,8 @@ function loadScript() {
       const timer = setTimeout(fail, 10000);
       script.onload = () => {
         clearTimeout(timer);
-        resolve(window.turnstile);
+        if (window.turnstile) resolve(window.turnstile);
+        else fail();
       };
       script.onerror = fail;
       document.head.append(script);
@@ -27,8 +51,8 @@ function loadScript() {
 }
 
 export function useTurnstile() {
-  const container = useRef(null);
-  const widget = useRef(null);
+  const container = useRef<HTMLDivElement>(null);
+  const widget = useRef<string | null>(null);
   const [token, setToken] = useState("");
   const [required, setRequired] = useState(true);
   const [message, setMessage] = useState("Loading security check…");
@@ -43,7 +67,8 @@ export function useTurnstile() {
           signal: controller.signal,
         });
         if (!response.ok) throw new Error("Configuration unavailable");
-        const config = await response.json();
+        const config: unknown = await response.json();
+        if (!isRecord(config)) throw new Error("Configuration unavailable");
         if (!active) return;
         if (
           config.required === false &&
@@ -57,14 +82,12 @@ export function useTurnstile() {
         if (typeof config.siteKey !== "string" || !config.siteKey)
           throw new Error("Configuration unavailable");
         const api = await loadScript();
-        if (!active) return;
+        if (!active || !container.current) return;
         widget.current = api.render(container.current, {
           sitekey: config.siteKey,
           action: "contact",
           theme: "dark",
-          size: container.current.clientWidth < 300
-            ? "compact"
-            : "flexible",
+          size: container.current.clientWidth < 300 ? "compact" : "flexible",
           "response-field": false,
           callback: (value) => {
             if (active) {

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { access } from "node:fs/promises";
 import test from "node:test";
-import worker from "../worker/index.js";
+// Exercise the emitted adapter too: the TypeScript build must remain deployable JavaScript.
+import worker from "../dist/server/index.js";
 
 test("serves existing static assets without a fallback", async () => {
   const calls = [];

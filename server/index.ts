@@ -3,7 +3,7 @@ import { readFile, stat } from "node:fs/promises";
 import { resolve, extname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Readable } from "node:stream";
-import { createContactHandler } from "./contact.mjs";
+import { createContactHandler } from "./contact.ts";
 
 const root = resolve(
   fileURLToPath(new URL("../dist/client/", import.meta.url)),
@@ -11,7 +11,7 @@ const root = resolve(
 const host = process.env.HOST || "127.0.0.1";
 const port = Number(process.env.PORT || 4173);
 const contact = createContactHandler();
-const types = {
+const types: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -27,7 +27,8 @@ const server = createServer(async (req, res) => {
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader("X-Frame-Options", "DENY");
   try {
-    const url = new URL(req.url, base);
+    const url = new URL(req.url ?? "/", base);
+    const method = req.method ?? "GET";
     if (url.pathname === "/api/contact-config" && req.method === "GET") {
       res.writeHead(200, {
         "Content-Type": "application/json",
@@ -42,10 +43,13 @@ const server = createServer(async (req, res) => {
         if (value !== undefined)
           headers.set(key, Array.isArray(value) ? value.join(",") : value);
       const request = new Request(url, {
-        method: req.method,
+        method,
         headers,
-        ...(!["GET", "HEAD"].includes(req.method)
-          ? { body: Readable.toWeb(req), duplex: "half" }
+        ...(!["GET", "HEAD"].includes(method)
+          ? {
+              body: Readable.toWeb(req) as ReadableStream<Uint8Array>,
+              duplex: "half",
+            }
           : {}),
       });
       const response = await contact(request, {
@@ -55,10 +59,7 @@ const server = createServer(async (req, res) => {
       res.end(await response.text());
       return;
     }
-    if (
-      !["GET", "HEAD"].includes(req.method) ||
-      url.pathname.startsWith("/api/")
-    ) {
+    if (!["GET", "HEAD"].includes(method) || url.pathname.startsWith("/api/")) {
       res.writeHead(404);
       res.end("Not found");
       return;
@@ -98,5 +99,7 @@ const server = createServer(async (req, res) => {
 server.requestTimeout = 20_000;
 server.headersTimeout = 10_000;
 server.listen(port, host, () =>
-  console.log(`Consulting preview: http://${host}:${server.address().port}/`),
+  console.log(
+    `Consulting preview: http://${host}:${(server.address() as import("node:net").AddressInfo).port}/`,
+  ),
 );

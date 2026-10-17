@@ -1,17 +1,25 @@
+import type { FormEvent } from "react";
+import { isRecord } from "../shared/json.ts";
 import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight, Check } from "@phosphor-icons/react";
-import { useTurnstile } from "./useTurnstile.js";
+import { useTurnstile } from "./useTurnstile.ts";
 const services = [
   "Architecture & modernization",
   "Engineering leadership & delivery",
   "Practical AI workflows",
 ].map((title) => ({ title }));
-export function ContactForm({ topic, setTopic }) {
-  const [state, setState] = useState("idle");
+interface ContactFormProps {
+  topic: string;
+  setTopic: (topic: string) => void;
+}
+export function ContactForm({ topic, setTopic }: ContactFormProps) {
+  const [state, setState] = useState<"idle" | "sending" | "sent" | "error">(
+    "idle",
+  );
   const [error, setError] = useState("");
   const pending = useRef(false);
-  const attempt = useRef(null);
-  const statusRef = useRef(null);
+  const attempt = useRef<{ signature: string; requestId: string } | null>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
   const busy = state === "sending";
   const security = useTurnstile();
 
@@ -23,15 +31,20 @@ export function ContactForm({ topic, setTopic }) {
     }
   }, [topic]);
 
-  async function submit(event) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending.current || !security.ready) return;
     const form = event.currentTarget;
-    form.elements.name.setCustomValidity(
-      form.elements.name.value.trim() ? "" : "Please enter your name.",
-    );
-    form.elements.message.setCustomValidity(
-      form.elements.message.value.trim().length >= 20
+    const name = form.elements.namedItem("name");
+    const message = form.elements.namedItem("message");
+    if (
+      !(name instanceof HTMLInputElement) ||
+      !(message instanceof HTMLTextAreaElement)
+    )
+      return;
+    name.setCustomValidity(name.value.trim() ? "" : "Please enter your name.");
+    message.setCustomValidity(
+      message.value.trim().length >= 20
         ? ""
         : "Please add at least 20 characters about your project.",
     );
@@ -54,10 +67,12 @@ export function ContactForm({ topic, setTopic }) {
         }),
         signal: AbortSignal.timeout(20_000),
       });
-      const result = await response.json().catch(() => null);
-      if (!response.ok || result?.ok !== true)
+      const result: unknown = await response.json().catch(() => null);
+      if (!response.ok || !isRecord(result) || result.ok !== true)
         throw new Error(
-          result?.error || "We couldn't send your inquiry. Please try again.",
+          isRecord(result) && typeof result.error === "string" && result.error
+            ? result.error
+            : "We couldn't send your inquiry. Please try again.",
         );
       setState("sent");
       form.reset();
@@ -65,9 +80,9 @@ export function ContactForm({ topic, setTopic }) {
     } catch (failure) {
       setState("error");
       setError(
-        failure.name === "TimeoutError"
+        failure instanceof Error && failure.name === "TimeoutError"
           ? "We couldn't confirm submission. Your message is still here—please try again."
-          : failure.message ||
+          : (failure instanceof Error && failure.message) ||
               "We couldn't send your inquiry. Please try again.",
       );
     } finally {
@@ -81,7 +96,12 @@ export function ContactForm({ topic, setTopic }) {
       onSubmit={submit}
       aria-busy={busy}
       onChange={(event) => {
-        event.target.setCustomValidity?.("");
+        if (
+          event.target instanceof HTMLInputElement ||
+          event.target instanceof HTMLTextAreaElement ||
+          event.target instanceof HTMLSelectElement
+        )
+          event.target.setCustomValidity("");
         if (!pending.current) {
           setState("idle");
           setError("");

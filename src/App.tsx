@@ -1,17 +1,12 @@
+import type { KeyboardEvent } from "react";
 import { useEffect, useRef, useState } from "react";
-import {
-  ArrowUpRight,
-  ArrowDown,
-  List,
-  X,
-  Check,
-} from "@phosphor-icons/react";
+import { ArrowUpRight, ArrowDown, List, X, Check } from "@phosphor-icons/react";
 import "@fontsource/manrope/latin-400.css";
 import "@fontsource/manrope/latin-500.css";
 import "@fontsource/manrope/latin-600.css";
 import "@fontsource/manrope/latin-700.css";
 import "@fontsource/instrument-serif/latin-400-italic.css";
-import { ContactForm } from "./ContactForm.jsx";
+import { ContactForm } from "./ContactForm.tsx";
 
 const modes = [
   {
@@ -53,8 +48,8 @@ const services = [
 
 function Workbench() {
   const [active, setActive] = useState(0);
-  const tabs = useRef([]);
-  const scene = useRef(null);
+  const tabs = useRef<(HTMLButtonElement | null)[]>([]);
+  const scene = useRef<HTMLDivElement>(null);
   const [reducedMotion, setReducedMotion] = useState(
     () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
@@ -69,7 +64,7 @@ function Workbench() {
     const observer = new IntersectionObserver(([entry]) =>
       setVisible(entry.isIntersecting),
     );
-    observer.observe(scene.current);
+    if (scene.current) observer.observe(scene.current);
     return () => {
       preference.removeEventListener("change", updatePreference);
       document.removeEventListener("visibilitychange", updateVisibility);
@@ -77,7 +72,7 @@ function Workbench() {
     };
   }, []);
   const running = !reducedMotion && visible && pageVisible;
-  function handleKey(event, index) {
+  function handleKey(event: KeyboardEvent<HTMLButtonElement>, index: number) {
     let next;
     if (event.key === "ArrowRight") next = (index + 1) % modes.length;
     if (event.key === "ArrowLeft")
@@ -112,11 +107,35 @@ function Workbench() {
           />
         </picture>
         <div className="data-packets" aria-hidden="true">
-          {["screen-one", "screen-two", "product", "services", "data", "delivery", "hub", "ambient-left", "ambient-right"].map((route) => (
-            <img key={route} className={`data-packet packet-${route}`} src="/assets/data-packet.webp" alt="" width="128" height="128" />
+          {[
+            "screen-one",
+            "screen-two",
+            "product",
+            "services",
+            "data",
+            "delivery",
+            "hub",
+            "ambient-left",
+            "ambient-right",
+          ].map((route) => (
+            <img
+              key={route}
+              className={`data-packet packet-${route}`}
+              src="/assets/data-packet.webp"
+              alt=""
+              width="128"
+              height="128"
+            />
           ))}
           {["product", "services", "data", "delivery"].map((route) => (
-            <img key={`trail-${route}`} className={`data-packet packet-${route} packet-trail`} src="/assets/data-packet.webp" alt="" width="128" height="128" />
+            <img
+              key={`trail-${route}`}
+              className={`data-packet packet-${route} packet-trail`}
+              src="/assets/data-packet.webp"
+              alt=""
+              width="128"
+              height="128"
+            />
           ))}
         </div>
         <div className="physical-controls" aria-hidden="true">
@@ -208,7 +227,9 @@ export function App() {
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               setMenuOpen(false);
-              document.querySelector(".menu-toggle")?.focus();
+              document
+                .querySelector<HTMLButtonElement>(".menu-toggle")
+                ?.focus();
             }
           }}
         >

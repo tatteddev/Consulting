@@ -1,7 +1,17 @@
+import { isRecord } from "../shared/json.ts";
+import type { ContactEnv } from "../server/contact.ts";
 import { createHash } from "node:crypto";
-import { createContactHandler } from "../server/contact.mjs";
+import { createContactHandler } from "../server/contact.ts";
 
-const json = (status, error, retry) =>
+interface Env extends ContactEnv {
+  CONTACT_ORIGIN: string;
+  CONTACT_DAILY_CAP: string;
+  TURNSTILE_SECRET_KEY?: string;
+  TURNSTILE_SITE_KEY?: string;
+  ASSETS: Fetcher;
+  CONTACT_LIMITS: DurableObjectNamespace;
+}
+const json = (status: number, error: string, retry?: number) =>
   Response.json(
     { error },
     {
@@ -13,7 +23,12 @@ const json = (status, error, retry) =>
     },
   );
 
-export async function verifyTurnstile(token, ip, env, fetchVerify = fetch) {
+export async function verifyTurnstile(
+  token: unknown,
+  ip: string,
+  env: Env,
+  fetchVerify: typeof fetch = fetch,
+) {
   if (!env.TURNSTILE_SECRET_KEY || !env.TURNSTILE_SITE_KEY)
     return json(
       503,
@@ -34,9 +49,10 @@ export async function verifyTurnstile(token, ip, env, fetchVerify = fetch) {
         signal: AbortSignal.timeout(5000),
       },
     );
-    const result = await response.json();
+    const result: unknown = await response.json();
     if (
       !response.ok ||
+      !isRecord(result) ||
       result.success !== true ||
       result.action !== "contact" ||
       result.hostname !== new URL(env.CONTACT_ORIGIN).hostname
@@ -55,7 +71,9 @@ export async function verifyTurnstile(token, ip, env, fetchVerify = fetch) {
 }
 
 export class ContactLimits {
-  constructor(ctx, env) {
+  private readonly storage: DurableObjectStorage;
+  private readonly env: Env;
+  constructor(ctx: DurableObjectState, env: Env) {
     this.storage = ctx.storage;
     this.env = env;
     this.storage.sql.exec(
@@ -65,11 +83,14 @@ export class ContactLimits {
       "CREATE INDEX IF NOT EXISTS counters_expiry ON counters(expires)",
     );
   }
-  async fetch(request) {
-    const { kind, key } = await request.json();
+  async fetch(request: Request) {
+    const input: unknown = await request.json();
+    if (!isRecord(input)) return new Response(null, { status: 400 });
+    const { kind, key } = input;
     if (
-      !["attempt", "send"].includes(kind) ||
-      (kind === "attempt" && !/^[a-f0-9]{64}$/.test(key))
+      (kind !== "attempt" && kind !== "send") ||
+      (kind === "attempt" &&
+        (typeof key !== "string" || !/^[a-f0-9]{64}$/.test(key)))
     )
       return new Response(null, { status: 400 });
     const now = Date.now();
@@ -85,16 +106,20 @@ export class ContactLimits {
       const sql = this.storage.sql;
       sql.exec("DELETE FROM counters WHERE expires <= ?", now);
       const existing = sql
-        .exec("SELECT count, expires FROM counters WHERE key = ?", counterKey)
+        .exec<{ count: number; expires: number }>(
+          "SELECT count, expires FROM counters WHERE key = ?",
+          counterKey,
+        )
         .toArray()[0];
-      if (existing?.count >= limit)
+      if (existing && existing.count >= limit)
         return {
           allowed: false,
           retry: Math.ceil((existing.expires - now) / 1000),
         };
       if (
         !existing &&
-        sql.exec("SELECT COUNT(*) AS n FROM counters").one().n >= 5000
+        sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM counters").one().n >=
+          5000
       )
         return { allowed: false, retry: 3600 };
       sql.exec(
@@ -115,7 +140,9 @@ export class ContactLimits {
       Date.now(),
     );
     const next = this.storage.sql
-      .exec("SELECT MIN(expires) AS expires FROM counters")
+      .exec<{ expires: number | null }>(
+        "SELECT MIN(expires) AS expires FROM counters",
+      )
       .one().expires;
     if (next !== null)
       await this.storage.setAlarm(Math.max(Date.now() + 1000, next));
@@ -123,7 +150,7 @@ export class ContactLimits {
 }
 
 const app = {
-  async fetch(request, env) {
+  async fetch(request: Request, env: Env) {
     const url = new URL(request.url);
     if (url.hostname === "www.olegnovoselskyy.com") {
       url.hostname = "olegnovoselskyy.com";
@@ -145,13 +172,14 @@ const app = {
         const limits = env.CONTACT_LIMITS.get(
           env.CONTACT_LIMITS.idFromName("consulting-contact-v1"),
         );
-        async function check(kind, key) {
+        async function check(kind: "attempt" | "send", key?: string) {
           const response = await limits.fetch("https://limits.internal/", {
             method: "POST",
             body: JSON.stringify({ kind, key }),
           });
           if (!response.ok) throw new Error("limits unavailable");
-          const result = await response.json();
+          const result: unknown = await response.json();
+          if (!isRecord(result)) throw new Error("limits unavailable");
           return result.allowed === true
             ? null
             : json(
@@ -159,7 +187,9 @@ const app = {
                 kind === "send"
                   ? "The contact form has reached its daily limit. Please try again tomorrow or use the email link."
                   : "Too many attempts. Please try again later.",
-                result.retry || 3600,
+                typeof result.retry === "number" && result.retry
+                  ? result.retry
+                  : 3600,
               );
         }
         // Salt the stored IP hash; raw visitor IPs never enter durable storage.
@@ -202,7 +232,7 @@ const reportOnlyPolicy = [
 ].join("; ");
 
 export default {
-  async fetch(request, env) {
+  async fetch(request: Request, env: Env) {
     const response = await app.fetch(request, env);
     // Clone immutable asset/redirect headers and protect API/error responses too.
     const secured = new Response(response.body, response);

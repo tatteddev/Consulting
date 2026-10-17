@@ -5,8 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { build } from "esbuild";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
-import worker, { verifyTurnstile } from "../cloudflare/worker.mjs";
-import { createContactHandler } from "../server/contact.mjs";
+import worker, { verifyTurnstile } from "../cloudflare/worker.ts";
+import { createContactHandler } from "../server/contact.ts";
 
 const env = {
   CONTACT_ORIGIN: "https://example.test",
@@ -190,7 +190,7 @@ test("real SQLite Durable Object enforces concurrent limits and persists across 
   try {
     const scriptPath = join(dir, "worker.mjs");
     await build({
-      entryPoints: ["cloudflare/worker.mjs"],
+      entryPoints: ["cloudflare/worker.ts"],
       outfile: scriptPath,
       bundle: true,
       format: "esm",

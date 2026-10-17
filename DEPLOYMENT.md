@@ -34,7 +34,9 @@ For rotation, use `npx wrangler secret put RESEND_API_KEY` or `npx wrangler secr
 
 ## Release and recovery
 
-Run `npm ci`, `npm audit --audit-level=high`, `npm run build`, all three test scripts, and `npm run check:secrets` before `npx wrangler deploy`. GitHub validation and Cloudflare Builds run the same checks without email credentials. Cloudflare deploys pushes to `main`; preview builds are disabled. The Node runtime is local development only; production uses `cloudflare/worker.mjs`. The legacy static Sites adapter cannot deliver email.
+The build starts with strict TypeScript checks for browser, Node and Worker source. Cloudflare's existing build command runs `npm run build`, so a type failure stops the release before deployment. Worker entry point: `cloudflare/worker.ts`. Keep the `ContactLimits` class, binding and SQLite migration identifiers stable across source migrations so existing counters remain intact.
+
+Run `npm ci`, `npm audit --audit-level=high`, `npm run build`, all three test scripts, and `npm run check:secrets` before `npx wrangler deploy`. GitHub validation and Cloudflare Builds run the same checks without email credentials. Cloudflare deploys pushes to `main`; preview builds are disabled. The Node runtime is local development only; production uses `cloudflare/worker.ts`. The legacy static Sites adapter cannot deliver email.
 
 Verify the homepage, www redirect, public config, missing-token rejection, one browser inquiry and Resend delivery after a release. Do not exhaust the real daily allowance during verification; the concurrent cap and persistence tests use isolated local Durable Objects.
 

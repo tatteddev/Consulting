@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createContactHandler } from "../server/contact.mjs";
+import { createContactHandler } from "../server/contact.ts";
 const origin="http://127.0.0.1:4173";
 const env={RESEND_API_KEY:"test-only-key",CONTACT_FROM_EMAIL:"Consulting <inquiries@mail.example.test>",CONTACT_ORIGIN:origin};
 const values={name:"Alex Example",email:"alex@example.test",topic:"Practical AI workflows",message:"Please review our current engineering workflows.",website:"",requestId:"2c6700b6-77ae-4cb2-9ac3-329d7afbfba5"};

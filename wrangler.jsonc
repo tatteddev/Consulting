@@ -2,7 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "oleg-consulting",
   "account_id": "32602ca412fd35c59329a93362cc5e60",
-  "main": "cloudflare/worker.mjs",
+  "main": "cloudflare/worker.ts",
   "compatibility_date": "2026-08-01",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,

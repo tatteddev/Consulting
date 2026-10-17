@@ -4,6 +4,10 @@ Personal consulting website. Live: https://olegnovoselskyy.com. Repository: http
 
 ## Run locally
 
+Application code uses strict TypeScript: React in `src/`, the local Node runtime and shared contact handler in `server/`, and the production Worker in `cloudflare/`. The static adapter is in `worker/`. Separate browser, Node and Worker type configurations keep platform APIs distinct; the shared contact handler is checked against both server runtimes. Network JSON still undergoes runtime validation.
+
+`npm run typecheck` checks all application code without emitting files. `npm run build` requires that check before bundling, so both GitHub validation and Cloudflare Builds reject type errors. Vite and Wrangler emit JavaScript; `tsx` runs the local Node server and lets the existing JavaScript regression tests import TypeScript. Build utilities and tests remain JavaScript.
+
 Use Node.js 22 or later. Run `npm ci` and `npm run build`. Copy `.env.example` to `.env`, supply a domain-restricted Resend sending key, and run `npm start` to serve the frontend and contact endpoint together at http://127.0.0.1:4173/.
 
 `npm run dev` and `npm run preview` serve frontend assets only. Use `npm start` for email checks. Never put credentials in VITE variables or client code. The configured local `.env` is gitignored and excluded from archives.
