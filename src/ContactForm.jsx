@@ -141,6 +141,8 @@ export function ContactForm({ topic, setTopic }) {
             <input name="website" tabIndex={-1} autoComplete="off" />
           </label>
         </div>
+        <div className="contact-security" ref={security.container} />
+        {security.message && <p role="status">{security.message}</p>}
         <div className="form-bottom">
           <p>Your details are used to respond to your inquiry.</p>
           <button
@@ -152,8 +154,6 @@ export function ContactForm({ topic, setTopic }) {
             <ArrowUpRight size={19} aria-hidden="true" />
           </button>
         </div>
-        <div className="contact-security" ref={security.container} />
-        {security.message && <p role="status">{security.message}</p>}
       </fieldset>
       {state === "sent" && (
         <div

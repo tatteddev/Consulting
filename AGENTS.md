@@ -5,6 +5,7 @@
 - Personal website for Oleg Novoselskyy in tatteddev/Consulting, not HoneyDrunk Studios.
 - Selected concept: purple systems playground with graphite workbench imagery, large sans-serif headline and italic serif accent. Preserve that direction.
 - Mobile is a primary layout. Verify 320px and 390px widths, comfortable touch targets, no horizontal overflow, and reduced motion.
+- Turnstile sits above the submit action. Use the slim flexible widget when the form has at least 300px available; center the compact fallback on narrower screens.
 - Public copy uses the user's career summary; do not name employers or clients or add unverified credentials/testimonials.
 - Inquiries send directly through the form to oleg.novoselskyy@gmail.com. The Node endpoint uses Resend with verified mail.olegnovoselskyy.com. Keep credentials server-only in ignored .env and exclude them from archives.
 - Show the headshot once, in the hero. About is text-only.

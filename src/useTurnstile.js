@@ -62,9 +62,9 @@ export function useTurnstile() {
           sitekey: config.siteKey,
           action: "contact",
           theme: "dark",
-          size: window.matchMedia("(max-width: 400px)").matches
+          size: container.current.clientWidth < 300
             ? "compact"
-            : "normal",
+            : "flexible",
           "response-field": false,
           callback: (value) => {
             if (active) {

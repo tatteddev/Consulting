@@ -590,6 +590,14 @@ textarea {
   line-height: 1.7;
   min-height: 135px;
 }
+.contact-security:not(:empty) {
+  margin: 4px 0 18px;
+  text-align: center;
+}
+.contact-security iframe {
+  display: block;
+  margin-inline: auto;
+}
 .form-bottom {
   display: flex;
   align-items: center;
