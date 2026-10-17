@@ -1,0 +1,193 @@
+import { createHash } from "node:crypto";
+import { createContactHandler } from "../server/contact.mjs";
+
+const json = (status, error, retry) =>
+  Response.json(
+    { error },
+    {
+      status,
+      headers: {
+        "Cache-Control": "no-store",
+        ...(retry ? { "Retry-After": String(retry) } : {}),
+      },
+    },
+  );
+
+export async function verifyTurnstile(token, ip, env, fetchVerify = fetch) {
+  if (!env.TURNSTILE_SECRET_KEY || !env.TURNSTILE_SITE_KEY)
+    return json(
+      503,
+      "The contact form is temporarily unavailable. Please try again later.",
+    );
+  if (typeof token !== "string" || !token || token.length > 2048)
+    return json(400, "Please complete the security check and try again.");
+  try {
+    const response = await fetchVerify(
+      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+      {
+        method: "POST",
+        body: new URLSearchParams({
+          secret: env.TURNSTILE_SECRET_KEY,
+          response: token,
+          remoteip: ip,
+        }),
+        signal: AbortSignal.timeout(5000),
+      },
+    );
+    const result = await response.json();
+    if (
+      !response.ok ||
+      result.success !== true ||
+      result.action !== "contact" ||
+      result.hostname !== new URL(env.CONTACT_ORIGIN).hostname
+    )
+      return json(
+        400,
+        "The security check expired or failed. Please try again.",
+      );
+    return null;
+  } catch {
+    return json(
+      503,
+      "The security check is temporarily unavailable. Please try again.",
+    );
+  }
+}
+
+export class ContactLimits {
+  constructor(ctx, env) {
+    this.storage = ctx.storage;
+    this.env = env;
+    this.storage.sql.exec(
+      "CREATE TABLE IF NOT EXISTS counters (key TEXT PRIMARY KEY, count INTEGER NOT NULL, expires INTEGER NOT NULL)",
+    );
+    this.storage.sql.exec(
+      "CREATE INDEX IF NOT EXISTS counters_expiry ON counters(expires)",
+    );
+  }
+  async fetch(request) {
+    const { kind, key } = await request.json();
+    if (
+      !["attempt", "send"].includes(kind) ||
+      (kind === "attempt" && !/^[a-f0-9]{64}$/.test(key))
+    )
+      return new Response(null, { status: 400 });
+    const now = Date.now();
+    const limit = kind === "attempt" ? 5 : Number(this.env.CONTACT_DAILY_CAP);
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100)
+      return new Response(null, { status: 503 });
+    const counterKey = kind === "attempt" ? `ip:${key}` : "daily";
+    const expires =
+      kind === "attempt"
+        ? now + 3600000
+        : (Math.floor(now / 86400000) + 1) * 86400000;
+    const result = this.storage.transactionSync(() => {
+      const sql = this.storage.sql;
+      sql.exec("DELETE FROM counters WHERE expires <= ?", now);
+      const existing = sql
+        .exec("SELECT count, expires FROM counters WHERE key = ?", counterKey)
+        .toArray()[0];
+      if (existing?.count >= limit)
+        return {
+          allowed: false,
+          retry: Math.ceil((existing.expires - now) / 1000),
+        };
+      if (
+        !existing &&
+        sql.exec("SELECT COUNT(*) AS n FROM counters").one().n >= 5000
+      )
+        return { allowed: false, retry: 3600 };
+      sql.exec(
+        "INSERT INTO counters(key, count, expires) VALUES (?, 1, ?) ON CONFLICT(key) DO UPDATE SET count = count + 1",
+        counterKey,
+        expires,
+      );
+      return { allowed: true };
+    });
+    // Remove hashes even if there is no subsequent traffic. No inquiry content is stored.
+    if ((await this.storage.getAlarm()) === null)
+      await this.storage.setAlarm(now + 3600000);
+    return Response.json(result);
+  }
+  async alarm() {
+    this.storage.sql.exec(
+      "DELETE FROM counters WHERE expires <= ?",
+      Date.now(),
+    );
+    const next = this.storage.sql
+      .exec("SELECT MIN(expires) AS expires FROM counters")
+      .one().expires;
+    if (next !== null)
+      await this.storage.setAlarm(Math.max(Date.now() + 1000, next));
+  }
+}
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    if (url.hostname === "www.olegnovoselskyy.com") {
+      url.hostname = "olegnovoselskyy.com";
+      return Response.redirect(url.toString(), 308);
+    }
+    try {
+      if (url.pathname === "/api/contact-config" && request.method === "GET")
+        return Response.json(
+          { required: true, siteKey: env.TURNSTILE_SITE_KEY || null },
+          { headers: { "Cache-Control": "no-store" } },
+        );
+      if (url.pathname === "/api/contact") {
+        const ip = request.headers.get("CF-Connecting-IP");
+        if (!ip || !env.CONTACT_LIMITS || !env.TURNSTILE_SECRET_KEY)
+          return json(
+            503,
+            "The contact form is temporarily unavailable. Please try again later.",
+          );
+        const limits = env.CONTACT_LIMITS.get(
+          env.CONTACT_LIMITS.idFromName("consulting-contact-v1"),
+        );
+        async function check(kind, key) {
+          const response = await limits.fetch("https://limits.internal/", {
+            method: "POST",
+            body: JSON.stringify({ kind, key }),
+          });
+          if (!response.ok) throw new Error("limits unavailable");
+          const result = await response.json();
+          return result.allowed === true
+            ? null
+            : json(
+                429,
+                kind === "send"
+                  ? "The contact form has reached its daily limit. Please try again tomorrow or use the email link."
+                  : "Too many attempts. Please try again later.",
+                result.retry || 3600,
+              );
+        }
+        // Salt the stored IP hash; raw visitor IPs never enter durable storage.
+        const key = createHash("sha256")
+          .update(env.TURNSTILE_SECRET_KEY + ":" + ip)
+          .digest("hex");
+        const handler = createContactHandler({
+          env,
+          checkAttempt: () => check("attempt", key),
+          verifyVisitor: (token, address) =>
+            verifyTurnstile(token, address, env),
+          reserveSend: () => check("send"),
+        });
+        return await handler(request, { ip });
+      }
+      if (url.pathname.startsWith("/api/"))
+        return new Response(null, { status: 404 });
+      const response = await env.ASSETS.fetch(request);
+      const secured = new Response(response.body, response);
+      secured.headers.set("X-Content-Type-Options", "nosniff");
+      secured.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+      secured.headers.set("X-Frame-Options", "DENY");
+      return secured;
+    } catch {
+      return json(
+        503,
+        "The contact form is temporarily unavailable. Please try again later.",
+      );
+    }
+  },
+};
