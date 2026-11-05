@@ -5,8 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { build } from "esbuild";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
-import worker, { verifyTurnstile } from "../cloudflare/worker.mjs";
-import { createContactHandler } from "../server/contact.mjs";
+import worker, { verifyTurnstile } from "../cloudflare/worker.ts";
+import { createContactHandler } from "../server/contact.ts";
 
 const env = {
   CONTACT_ORIGIN: "https://example.test",
@@ -121,7 +121,7 @@ test("production config exposes only public site key and missing limits fail clo
   assert.equal(missing.status, 503);
 });
 
-test("security headers cover assets, redirects, API responses and failures without enforcing CSP", async () => {
+test("security headers cover assets, redirects, API responses and failures with enforced CSP", async () => {
   const assetEnv = {
     ...env,
     ASSETS: {
@@ -162,8 +162,8 @@ test("security headers cover assets, redirects, API responses and failures witho
       "camera=(), microphone=(), geolocation=()",
     );
     assert.equal(response.headers.get("X-Frame-Options"), "DENY");
-    assert.equal(response.headers.get("Content-Security-Policy"), null);
-    const csp = response.headers.get("Content-Security-Policy-Report-Only");
+    assert.equal(response.headers.get("Content-Security-Policy-Report-Only"), null);
+    const csp = response.headers.get("Content-Security-Policy");
     assert.ok(
       csp.includes("script-src 'self' https://challenges.cloudflare.com"),
     );
@@ -190,7 +190,7 @@ test("real SQLite Durable Object enforces concurrent limits and persists across 
   try {
     const scriptPath = join(dir, "worker.mjs");
     await build({
-      entryPoints: ["cloudflare/worker.mjs"],
+      entryPoints: ["cloudflare/worker.ts"],
       outfile: scriptPath,
       bundle: true,
       format: "esm",
