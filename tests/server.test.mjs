@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 
 test("Node runtime serves the built page and assets without exposing server files", async (t) => {
-  const child = spawn(process.execPath, ["server/index.mjs"], {
+  const child = spawn(process.execPath, ["--import", "tsx", "server/index.ts"], {
     cwd: new URL("../", import.meta.url),
     env: {
       ...process.env,
@@ -40,7 +40,7 @@ test("Node runtime serves the built page and assets without exposing server file
   const asset = await fetch(base + script);
   assert.equal(asset.status, 200);
   assert.match(asset.headers.get("content-type"), /javascript/);
-  for (const path of ["/.env", "/server/contact.mjs", "/api/missing"]) {
+  for (const path of ["/.env", "/server/contact.ts", "/api/missing"]) {
     assert.equal((await fetch(base + path)).status, 404, path);
   }
   assert.equal((await fetch(base + "/api/contact")).status, 405);

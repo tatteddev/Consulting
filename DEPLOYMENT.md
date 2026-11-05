@@ -20,7 +20,13 @@ The attempt gate runs before Turnstile to bound unverified traffic, so users sha
 
 All Worker responses, including API failures and the www redirect, carry HSTS (`max-age=31536000; includeSubDomains`) and disable camera, microphone and geolocation. Keep HTTPS working for this domain and any future web subdomains; HSTS persists in browsers for one year. Preload is not enabled.
 
-CSP is initially `Content-Security-Policy-Report-Only`: self-hosted assets plus Turnstile scripts/frames, no inline-script or eval allowances. Report-only does not block violations; X-Frame-Options still denies framing. Inspect browser console diagnostics and verify Turnstile on desktop/mobile before promoting to enforcement. No reporting endpoint or third-party telemetry collector is configured.
+CSP is enforced with `Content-Security-Policy`: self-hosted assets plus Turnstile scripts/frames. There are no `unsafe-inline` or `unsafe-eval` allowances. The only inline JSON-LD block is allowed by an exact SHA-256 hash derived from the same serialized data used by the HTML build. Keep `shared/seo.ts`, the generated HTML and the Worker in the same release. Verify Turnstile and inspect CSP diagnostics on desktop and mobile after policy or integration changes. No reporting endpoint or third-party telemetry collector is configured.
+
+## Search discovery
+
+The build renders the actual React homepage to HTML, then hydrates it in the browser. Name, career summary, services and links are available without JavaScript. Canonical, Open Graph and social-card metadata identify the apex URL. `robots.txt` allows crawling and advertises `sitemap.xml`; only the canonical homepage is listed. Unknown paths receive a real 404 with noindex. Person, WebSite, WebPage and Service structured data reflects visible, user-approved information; it does not promise rich results.
+
+The public `google-site-verification` meta tag belongs to the user's Tatted Dev Search Console account and must remain for continued ownership verification. It is intentionally public and is not an API credential. Search Console property: `https://olegnovoselskyy.com/`. Submit `https://olegnovoselskyy.com/sitemap.xml` and inspect/request indexing of the homepage after verification. Google decides when to crawl/index and how to rank; sitemap submission does not guarantee placement. Monitor name queries and indexing there. Links to this site from the user's Tatted Dev, GitHub and HoneyDrunk Studios profiles can reinforce discovery; changes to those properties are separate work.
 
 ## Dependency maintenance
 
@@ -34,7 +40,9 @@ For rotation, use `npx wrangler secret put RESEND_API_KEY` or `npx wrangler secr
 
 ## Release and recovery
 
-Run `npm ci`, `npm audit --audit-level=high`, `npm run build`, all three test scripts, and `npm run check:secrets` before `npx wrangler deploy`. GitHub validation and Cloudflare Builds run the same checks without email credentials. Cloudflare deploys pushes to `main`; preview builds are disabled. The Node runtime is local development only; production uses `cloudflare/worker.mjs`. The legacy static Sites adapter cannot deliver email.
+The build starts with strict TypeScript checks for browser, Node and Worker source. Cloudflare's existing build command runs `npm run build`, so a type failure stops the release before deployment. Worker entry point: `cloudflare/worker.ts`. Keep the `ContactLimits` class, binding and SQLite migration identifiers stable across source migrations so existing counters remain intact.
+
+Run `npm ci`, `npm audit --audit-level=high`, `npm run build`, all three test scripts, and `npm run check:secrets` before `npx wrangler deploy`. GitHub validation and Cloudflare Builds run the same checks without email credentials. Cloudflare deploys pushes to `main`; preview builds are disabled. The Node runtime is local development only; production uses `cloudflare/worker.ts`. The legacy static Sites adapter cannot deliver email.
 
 Verify the homepage, www redirect, public config, missing-token rejection, one browser inquiry and Resend delivery after a release. Do not exhaust the real daily allowance during verification; the concurrent cap and persistence tests use isolated local Durable Objects.
 

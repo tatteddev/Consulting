@@ -1,9 +1,13 @@
 export default {
-  async fetch(request, env) {
+  async fetch(request: Request, env: { ASSETS: Fetcher }) {
     const response = await env.ASSETS.fetch(request);
     const acceptsHtml = request.headers.get("accept")?.includes("text/html");
 
-    if (response.status !== 404 || !acceptsHtml || !["GET", "HEAD"].includes(request.method)) {
+    if (
+      response.status !== 404 ||
+      !acceptsHtml ||
+      !["GET", "HEAD"].includes(request.method)
+    ) {
       return response;
     }
 
