@@ -1,12 +1,14 @@
 import React from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, hydrateRoot } from "react-dom/client";
 import { App } from "./App.tsx";
 import "./site.css";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing application root");
-createRoot(root).render(
+const app = (
   <React.StrictMode>
     <App />
-  </React.StrictMode>,
+  </React.StrictMode>
 );
+if (root.hasChildNodes()) hydrateRoot(root, app);
+else createRoot(root).render(app);

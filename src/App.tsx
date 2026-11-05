@@ -50,15 +50,15 @@ function Workbench() {
   const [active, setActive] = useState(0);
   const tabs = useRef<(HTMLButtonElement | null)[]>([]);
   const scene = useRef<HTMLDivElement>(null);
-  const [reducedMotion, setReducedMotion] = useState(
-    () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-  );
+  const [reducedMotion, setReducedMotion] = useState(true);
   const [visible, setVisible] = useState(true);
-  const [pageVisible, setPageVisible] = useState(!document.hidden);
+  const [pageVisible, setPageVisible] = useState(false);
   useEffect(() => {
     const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
     const updatePreference = () => setReducedMotion(preference.matches);
     const updateVisibility = () => setPageVisible(!document.hidden);
+    updatePreference();
+    updateVisibility();
     preference.addEventListener("change", updatePreference);
     document.addEventListener("visibilitychange", updateVisibility);
     const observer = new IntersectionObserver(([entry]) =>
