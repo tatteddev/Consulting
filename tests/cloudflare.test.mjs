@@ -121,7 +121,7 @@ test("production config exposes only public site key and missing limits fail clo
   assert.equal(missing.status, 503);
 });
 
-test("security headers cover assets, redirects, API responses and failures without enforcing CSP", async () => {
+test("security headers cover assets, redirects, API responses and failures with enforced CSP", async () => {
   const assetEnv = {
     ...env,
     ASSETS: {
@@ -162,8 +162,8 @@ test("security headers cover assets, redirects, API responses and failures witho
       "camera=(), microphone=(), geolocation=()",
     );
     assert.equal(response.headers.get("X-Frame-Options"), "DENY");
-    assert.equal(response.headers.get("Content-Security-Policy"), null);
-    const csp = response.headers.get("Content-Security-Policy-Report-Only");
+    assert.equal(response.headers.get("Content-Security-Policy-Report-Only"), null);
+    const csp = response.headers.get("Content-Security-Policy");
     assert.ok(
       csp.includes("script-src 'self' https://challenges.cloudflare.com"),
     );
