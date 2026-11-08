@@ -40,6 +40,12 @@ test("Node runtime serves the built page and assets without exposing server file
   const asset = await fetch(base + script);
   assert.equal(asset.status, 200);
   assert.match(asset.headers.get("content-type"), /javascript/);
+  const iconPath = html.match(/<link rel="icon"[^>]+href="([^"]+)"/)?.[1];
+  assert.equal(iconPath, "/favicon.svg");
+  const icon = await fetch(base + iconPath);
+  assert.equal(icon.status, 200);
+  assert.equal(icon.headers.get("content-type"), "image/svg+xml");
+  assert.match(await icon.text(), /<svg\b/);
   for (const path of ["/.env", "/server/contact.ts", "/api/missing"]) {
     assert.equal((await fetch(base + path)).status, 404, path);
   }
