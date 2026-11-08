@@ -9,6 +9,7 @@
 - Public copy uses the user's career summary; do not name employers or clients or add unverified credentials/testimonials.
 - Inquiries send directly through the form to oleg.novoselskyy@gmail.com. The Node endpoint uses Resend with verified mail.olegnovoselskyy.com. Keep credentials server-only in ignored .env and exclude them from archives.
 - Show the headshot once, in the hero. About is text-only.
+- Use a branded favicon instead of the headshot.
 - Mobile places the workbench directly below the headline. Do not show a separate scene title.
 - Keep exactly four smaller, stationary buildings on the lower board, labeled Product, Services, Data and Delivery. The upper monitor shows an abstract network overview with no buildings or duplicate labels. This supersedes the earlier three-module interpretation.
 - Animate neon light/data packets across the monitor and between the buildings; do not float or move the buildings. Keep the animation running without a visible pause/play control; honor reduced motion and pause outside the viewport or when the page is hidden.
